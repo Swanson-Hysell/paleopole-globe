@@ -316,7 +316,9 @@
     }
 
     // plates
-    const drawOrder = ['AFR', 'SAM', 'EUR', 'IBE', 'NAM', 'GRN'];
+    // South America is drawn last (on top), so that where rigid North America (Mexico) and
+    // South America overlap in a Pangea fit, South America's outline stays visible
+    const drawOrder = ['AFR', 'EUR', 'IBE', 'NAM', 'GRN', 'SAM'];
     const geoms = {};
     drawOrder.forEach(id => {
       if (!state.visible[id]) return;
@@ -330,19 +332,23 @@
         c.fillStyle = byId[id].shelfFill; c.globalAlpha = 0.78; c.fill(); c.globalAlpha = 1;
       });
     }
+    // land, each plate with its selection outline in its own layer, so that a plate drawn
+    // later (on top) also covers the outline of the selected plate where they overlap
+    const sel = state.selected;
+    const selIds = [sel].concat(byId[sel].children);
     drawOrder.forEach(id => {
       if (!geoms[id]) return;
       const pl = byId[id];
+      if (selIds.includes(id) && state.opts.shelf) {
+        c.beginPath(); p(geoms[id].shelf);
+        c.strokeStyle = 'rgba(255,255,255,0.95)'; c.lineWidth = 1.8; c.stroke();
+      }
       c.beginPath(); p(geoms[id].land);
       c.fillStyle = pl.color; c.fill();
       c.strokeStyle = pl.dark; c.lineWidth = 0.6; c.stroke();
-    });
-    // selection outline
-    const sel = state.selected;
-    [sel].concat(byId[sel].children).forEach(id => {
-      if (!geoms[id]) return;
-      c.beginPath(); p(geoms[id].shelf || geoms[id].land);
-      c.strokeStyle = 'rgba(255,255,255,0.95)'; c.lineWidth = 1.8; c.stroke();
+      if (selIds.includes(id) && !state.opts.shelf) {
+        c.strokeStyle = 'rgba(255,255,255,0.95)'; c.lineWidth = 1.8; c.stroke();
+      }
     });
 
     // reference sites
@@ -816,7 +822,7 @@
     const [cx, cy] = projection.translate();
     if (Math.hypot(xy[0] - cx, xy[1] - cy) > projection.scale()) return null;
     const v = cart(g[1], g[0]);
-    const order = ['GRN', 'NAM', 'IBE', 'EUR', 'SAM', 'AFR'];
+    const order = ['SAM', 'GRN', 'NAM', 'IBE', 'EUR', 'AFR'];     // topmost first, as drawn
     for (const id of order) {
       if (!state.visible[id]) continue;
       const pv = qRotate(qConj(effectiveQ(id)), v);
