@@ -1,0 +1,213 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>PaleopoleGlobe</title>
+<meta name="description" content="PaleopoleGlobe: reconstruct continents from paleomagnetic poles on a globe. A lightweight, GPlates-style plate reconstruction app for teaching (University of Minnesota).">
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 64 64'%3E%3Ccircle cx='32' cy='32' r='28' fill='%232f6690'/%3E%3Cpath d='M20 22c6-6 14-4 16 2s-4 10-10 12-10-8-6-14z' fill='%23c9773f'/%3E%3Cpath d='M38 30c6-2 10 2 9 8s-7 8-11 5-3-11 2-13z' fill='%234f7cac'/%3E%3Ccircle cx='32' cy='8' r='4' fill='%23fde725' stroke='%23fff'/%3E%3C/svg%3E">
+<link rel="stylesheet" href="css/style.css?v=2026-11-03c">
+</head>
+<body>
+<header class="topbar">
+  <div class="brand">
+    <span class="logo" aria-hidden="true"></span>
+    <div>
+      <h1>PaleopoleGlobe</h1>
+      <p class="tagline">Reconstructing continents with paleomagnetic poles<span id="scenario-name"></span></p>
+    </div>
+  </div>
+  <div class="toolbar" role="toolbar" aria-label="Tools">
+    <button id="btn-undo" class="icon-btn" title="Undo (Ctrl/Cmd+Z)" aria-label="Undo"><svg viewBox="0 0 24 24"><path d="M9 14L4 9l5-5"/><path d="M4 9h10.5a5.5 5.5 0 0 1 0 11H11"/></svg></button>
+    <button id="btn-redo" class="icon-btn" title="Redo (Shift+Ctrl/Cmd+Z)" aria-label="Redo"><svg viewBox="0 0 24 24"><path d="M15 14l5-5-5-5"/><path d="M20 9H9.5a5.5 5.5 0 0 0 0 11H13"/></svg></button>
+    <button id="btn-reset" class="text-btn" title="Put every plate back in its present-day position">Reset all</button>
+    <button id="btn-snapshot" class="text-btn primary" title="Download a PNG of the globe with your rotations">Save image</button>
+    <button id="btn-link" class="text-btn" title="Copy a link that reopens this exact reconstruction">Copy link</button>
+    <button id="btn-help" class="icon-btn" title="Help" aria-label="Help"><svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="9"/><path d="M9.5 9.5a2.5 2.5 0 1 1 3.5 2.3c-.7.3-1 .9-1 1.7v.5"/><circle cx="12" cy="17.2" r=".6" fill="currentColor"/></svg></button>
+  </div>
+</header>
+
+<main class="layout">
+  <section class="stage" id="stage">
+    <canvas id="globe" aria-label="Globe showing continents and paleomagnetic poles"></canvas>
+    <div id="tooltip" class="tooltip" hidden></div>
+    <div class="hud hud-tl" id="hud-status"></div>
+    <div class="hud hud-bl">
+      <div class="legend">
+        <div class="legend-title">Pole age (Ma)</div>
+        <canvas id="legend-bar" width="220" height="12"></canvas>
+        <div class="legend-ticks"><span>0</span><span>80</span><span>160</span><span>240</span><span>320</span></div>
+        <div class="legend-shapes" id="legend-shapes"></div>
+      </div>
+    </div>
+    <div class="hud hud-br zoom">
+      <button id="zoom-in" class="icon-btn dark" aria-label="Zoom in">+</button>
+      <button id="zoom-out" class="icon-btn dark" aria-label="Zoom out">&minus;</button>
+      <button id="view-north" class="icon-btn dark" title="Look down on the North Pole" aria-label="View from above the North Pole">N</button>
+      <button id="view-plate" class="icon-btn dark" title="Center the view on the selected plate" aria-label="Center on selected plate">&#8982;</button>
+    </div>
+  </section>
+
+  <aside class="panel" id="panel">
+    <div class="card setup" id="setup-card">
+      <div class="setup-title">Set up for</div>
+      <div class="setup-btns" role="radiogroup" aria-label="Lab part">
+        <button class="setup-btn" data-part="B" role="radio"><b>Part B</b><span>North America + Africa</span></button>
+        <button class="setup-btn" data-part="C" role="radio"><b>Part C</b><span>South America + Africa</span></button>
+        <button class="setup-btn" data-part="all" role="radio"><b>All</b><span>every plate</span></button>
+      </div>
+      <p class="hint">Shows only the continents and poles you need. Plates stay where you put them.</p>
+    </div>
+
+    <details open class="card">
+      <summary>Plates</summary>
+      <div id="plate-list" class="plate-list" role="radiogroup" aria-label="Selected plate"></div>
+      <label class="check"><input type="checkbox" id="opt-close" data-close="both">
+        <span><b>Close the Labrador Sea and Bay of Biscay</b> (Greenland back against North America, Iberia back against France)</span></label>
+      <p class="hint">Greenland and Iberia moved away from North America and France when these seas opened in the Cretaceous and early Cenozoic. Tick this before fitting Europe to North America (under <i>All</i>).</p>
+    </details>
+
+    <details open class="card">
+      <summary>Move <span id="move-plate-name" class="pill">North America</span></summary>
+      <p class="hint first">Drag a continent to move it, or drag its large pole marker onto the North Pole (it snaps on). For fine control:</p>
+      <div class="mover">
+        <div class="pad">
+          <button data-move="N" title="Move north (&uarr;)">N</button>
+          <button data-move="W" title="Move west: rotate about the spin axis (&larr;)">W</button>
+          <button data-move="E" title="Move east: rotate about the spin axis (&rarr;)">E</button>
+          <button data-move="S" title="Move south (&darr;)">S</button>
+          <span class="pad-center" aria-hidden="true"></span>
+        </div>
+        <div class="spin">
+          <button data-move="CCW" title="Rotate counterclockwise about the plate's center ( , )">&#8634; CCW</button>
+          <button data-move="CW" title="Rotate clockwise about the plate's center ( . )">CW &#8635;</button>
+          <label class="step">Step
+            <select id="step">
+              <option value="0.2">0.2&deg;</option>
+              <option value="1" selected>1&deg;</option>
+              <option value="5">5&deg;</option>
+              <option value="15">15&deg;</option>
+            </select>
+          </label>
+        </div>
+      </div>
+      <p class="hint"><b>E</b>/<b>W</b> turn the plate about Earth&rsquo;s spin axis, so they change longitude but never latitude.</p>
+      <div class="euler-actions"><button id="plate-reset" class="text-btn">Reset this plate</button></div>
+      <details class="sub">
+        <summary>Type a rotation (advanced)</summary>
+        <p class="hint">The plate&rsquo;s total rotation from its present-day position, as an angle about a rotation axis through Earth&rsquo;s center (an Euler pole; not a paleomagnetic pole). A positive angle is counterclockwise seen from above the axis.</p>
+        <div class="euler-grid">
+          <label>Axis lat<input id="eu-lat" type="number" step="0.1" inputmode="decimal"></label>
+          <label>Axis lon<input id="eu-lon" type="number" step="0.1" inputmode="decimal"></label>
+          <label>Angle<input id="eu-ang" type="number" step="0.1" inputmode="decimal"></label>
+        </div>
+        <div class="euler-actions"><button id="eu-apply" class="text-btn">Apply typed rotation</button></div>
+      </details>
+    </details>
+
+    <details open class="card">
+      <summary>Paleomagnetic poles</summary>
+      <label class="slider">Focus age <output id="age-out">250 Ma</output>
+        <input type="range" id="age" min="0" max="320" step="10" value="250">
+      </label>
+      <div id="pole-toggles" class="toggles"></div>
+      <label class="check"><input type="checkbox" id="opt-paths" checked> Connect poles into apparent polar wander paths</label>
+      <label class="check"><input type="checkbox" id="opt-circles" checked> Show the 95% confidence circle of the focus-age pole</label>
+      <details class="sub">
+        <summary>More pole options</summary>
+        <label class="check"><input type="checkbox" id="opt-allages"> Large markers for poles of all ages</label>
+        <div class="range2">
+          <span>Ages shown</span>
+          <input type="number" id="age-min" min="0" max="320" step="10" value="0" aria-label="Youngest age shown"> to
+          <input type="number" id="age-max" min="0" max="320" step="10" value="320" aria-label="Oldest age shown"> Ma
+        </div>
+        <label class="check"><input type="checkbox" id="opt-paleopoles"> Individual igneous paleopoles (the real data behind the path)</label>
+      </details>
+    </details>
+
+    <details open class="card">
+      <summary>Readouts</summary>
+      <table class="readout" id="readout-poles" aria-label="Focus-age pole positions"></table>
+      <table class="readout" id="readout-sites" aria-label="Site latitudes"></table>
+      <div id="readout-rel" class="rel"></div>
+    </details>
+
+    <details open class="card">
+      <summary>Path match</summary>
+      <label class="inline">Compare
+        <select id="pair">
+          <option value="AFR-NAM">Africa with North America</option>
+          <option value="SAM-AFR">South America with Africa</option>
+          <option value="EUR-NAM">Europe with North America</option>
+        </select>
+      </label>
+      <div id="match-chart" class="chart"></div>
+      <div class="chart-key"><span><svg width="12" height="12" viewBox="0 0 12 12"><circle cx="6" cy="6" r="4.5" fill="#2a788e" stroke="#1b2733"/></svg> filled: the two 95% circles overlap</span>
+        <span><svg width="12" height="12" viewBox="0 0 12 12"><circle cx="6" cy="6" r="4" fill="#fff" stroke="#2a788e" stroke-width="2"/></svg> open: they do not</span></div>
+      <p class="hint" id="match-summary"></p>
+    </details>
+
+    <details class="card">
+      <summary>Display</summary>
+      <label class="check"><input type="checkbox" id="opt-graticule" checked> Latitude/longitude grid (10&deg;)</label>
+      <label class="check"><input type="checkbox" id="opt-ghost"> Present-day outlines (dashed)</label>
+      <label class="check"><input type="checkbox" id="opt-shelf" checked> Continental shelves (sea floor shallower than 1000 m)</label>
+      <label class="check"><input type="checkbox" id="opt-labels" checked> Plate labels</label>
+      <label class="check"><input type="checkbox" id="opt-sites" checked> Reference sites</label>
+      <label class="name-row">Your name (printed on saved images)<input type="text" id="student-name" autocomplete="name"></label>
+    </details>
+
+    <details class="card instructor" id="instructor-card" hidden>
+      <summary>Instructor tools</summary>
+      <button id="ins-snap" class="text-btn">Snap selected plate&rsquo;s focus-age pole to the north pole</button>
+      <button id="ins-fit" class="text-btn">Apply published Pangea fit to the selected plate</button>
+      <button id="ins-pangea" class="text-btn">Show the reference reconstruction at the focus age</button>
+      <p class="hint">These buttons appear only when the address ends in <code>?instructor</code>.</p>
+    </details>
+
+    <details class="card">
+      <summary>About these data</summary>
+      <div class="about" id="about"></div>
+    </details>
+  </aside>
+</main>
+
+<div id="help" class="modal" hidden role="dialog" aria-modal="true" aria-labelledby="help-title">
+  <div class="modal-box">
+    <button class="icon-btn modal-close" id="help-close" aria-label="Close help">&times;</button>
+    <h2 id="help-title">How to use PaleopoleGlobe</h2>
+    <p>Each continent carries its <b>paleomagnetic poles</b>: where the north pole appears to have been, seen from that continent, at each age. Poles are glued to their plate, so when you move a plate its poles move with it.</p>
+    <h3>Reconstructing a continent</h3>
+    <ol>
+      <li>Click <b>Part B</b> or <b>Part C</b> under <i>Set up for</i> to show the continents you need.</li>
+      <li>Choose the <b>focus age</b> under <i>Paleomagnetic poles</i>. That age&rsquo;s pole is drawn large and labelled.</li>
+      <li>Drag the large pole marker onto the <b>North Pole</b> crosshair. The continent moves with it, and the pole snaps on when it is within 2&deg;.</li>
+      <li>The continent is now at its <b>paleolatitude</b> and in its ancient <b>orientation</b> for that age. Its longitude is still unknown.</li>
+    </ol>
+    <h3>Controls</h3>
+    <table class="keys">
+      <tr><td>Drag a continent</td><td>move it (and select it)</td></tr>
+      <tr><td>Drag a large pole marker</td><td>move its continent by the pole; snaps onto the North Pole</td></tr>
+      <tr><td><kbd>Shift</kbd>-drag a continent</td><td>spin it about its center</td></tr>
+      <tr><td>Drag the ocean or space</td><td>turn the globe; scroll or pinch to zoom</td></tr>
+      <tr><td>Click or tap a pole or star</td><td>show its details</td></tr>
+      <tr><td><kbd>&larr;</kbd> <kbd>&rarr;</kbd></td><td>move west / east (about the spin axis: latitude does not change)</td></tr>
+      <tr><td><kbd>&uarr;</kbd> <kbd>&darr;</kbd></td><td>move north / south</td></tr>
+      <tr><td><kbd>,</kbd> <kbd>.</kbd></td><td>rotate counterclockwise / clockwise</td></tr>
+      <tr><td><kbd>Shift</kbd> + key</td><td>five times the step</td></tr>
+      <tr><td><kbd>Ctrl/Cmd</kbd>+<kbd>Z</kbd></td><td>undo (add <kbd>Shift</kbd> to redo)</td></tr>
+    </table>
+    <p class="hint">Moved the wrong continent? Use undo (the curved arrow at the top). <b>Copy link</b> saves your reconstruction in a web address you can reopen later.</p>
+  </div>
+</div>
+
+<div id="toast" class="toast" hidden role="status"></div>
+
+<!-- ?v= on the files below makes browsers fetch new copies after an update: change it
+     (e.g. to the date) whenever any of these files changes -->
+<script src="js/vendor/d3.v7.9.0.min.js"></script>
+<script src="data/lab9.js?v=2026-11-03c"></script>
+<script src="js/geomath.js?v=2026-11-03c"></script>
+<script src="js/app.js?v=2026-11-03c"></script>
+</body>
+</html>
