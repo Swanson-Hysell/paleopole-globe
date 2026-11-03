@@ -69,6 +69,9 @@
         p[kind + 'V'] = ringsToVectors(p[kind]);
       }
     });
+    // exterior rings only: the selection outline should not trace lakes and other holes
+    p.landOuterV = p.landV.map(poly => [poly[0]]);
+    p.shelfOuterV = p.shelfV.map(poly => [poly[0]]);
     p.centroidV = cart(p.centroid[0], p.centroid[1]);
     p.predriftQ = p.predrift ? qEuler(p.predrift.lat, p.predrift.lon, p.predrift.angle) : null;
     p.children = plates.filter(c => c.parent === p.id).map(c => c.id);
@@ -336,19 +339,19 @@
     // later (on top) also covers the outline of the selected plate where they overlap
     const sel = state.selected;
     const selIds = [sel].concat(byId[sel].children);
+    const outline = id => {
+      const pl = byId[id];
+      c.beginPath(); p(rotatedMulti(state.opts.shelf ? pl.shelfOuterV : pl.landOuterV, effectiveQ(id)));
+      c.strokeStyle = 'rgba(255,255,255,0.95)'; c.lineWidth = 1.8; c.stroke();
+    };
     drawOrder.forEach(id => {
       if (!geoms[id]) return;
       const pl = byId[id];
-      if (selIds.includes(id) && state.opts.shelf) {
-        c.beginPath(); p(geoms[id].shelf);
-        c.strokeStyle = 'rgba(255,255,255,0.95)'; c.lineWidth = 1.8; c.stroke();
-      }
+      if (selIds.includes(id) && state.opts.shelf) outline(id);
       c.beginPath(); p(geoms[id].land);
       c.fillStyle = pl.color; c.fill();
       c.strokeStyle = pl.dark; c.lineWidth = 0.6; c.stroke();
-      if (selIds.includes(id) && !state.opts.shelf) {
-        c.strokeStyle = 'rgba(255,255,255,0.95)'; c.lineWidth = 1.8; c.stroke();
-      }
+      if (selIds.includes(id) && !state.opts.shelf) outline(id);
     });
 
     // reference sites
